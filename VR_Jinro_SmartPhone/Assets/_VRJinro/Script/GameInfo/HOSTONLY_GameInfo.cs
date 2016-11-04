@@ -26,6 +26,7 @@ public class HOSTONLY_GameInfo : Photon.MonoBehaviour {
         roomOptions = new RoomOptions();
         roomOptions.MaxPlayers = 12;
         roomOptions.IsOpen = true;
+        roomOptions.IsVisible = true;
         GameObject.FindGameObjectWithTag("Manager").GetComponent<RoomCreate>().CreateRoom(roomOptions,gameRollList.Count);
     }
 
@@ -35,6 +36,7 @@ public class HOSTONLY_GameInfo : Photon.MonoBehaviour {
     public void IsOpenRoom(bool _isOpen)
     {
         roomOptions.IsOpen = _isOpen;
+        roomOptions.IsVisible = _isOpen;
     }
    
 	private void Awake()

@@ -19,6 +19,8 @@ public class MyInfoBox : MonoBehaviour {
     Image skipImage;
     [SerializeField]
     Text suspectedCountText;
+    [SerializeField]
+    Text rollNameText;
 
     //※このスクリプトは個人のしか更新しないため別のプレイヤーからアクセスしても意味がない
 
@@ -49,6 +51,12 @@ public class MyInfoBox : MonoBehaviour {
     public void SetName(string name)
     {
         myNameText.text = name;
+    }
+
+    public void SetRollName(DataBase.Roll _roll)
+    {
+        DataBase tmpDatabase = new DataBase();
+        rollNameText.text = tmpDatabase.RollName(_roll);
     }
 
     /// <summary>

@@ -3,8 +3,11 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine.UI;
 
+using ExitGames.Client.Photon;
+
 [RequireComponent(typeof(PhotonView))]
-public class PLAYER_Info : Photon.MonoBehaviour {
+public class PLAYER_Info : Photon.MonoBehaviour
+{
 
 
     [SerializeField]
@@ -21,8 +24,15 @@ public class PLAYER_Info : Photon.MonoBehaviour {
     private GvrViewer myGvrViewer;
     [SerializeField]
     private GvrReticle myGvrReticle;
-    
-   
+    [SerializeField]
+    private AudioListener myAudioListener;
+    [SerializeField]
+    private Image voiceImage;
+    [SerializeField]
+    private PhotonVoiceRecorder rec;
+    [SerializeField]
+    private PhotonVoiceSpeaker spk;
+
 
 
     [Header("Read Only")]
@@ -38,13 +48,25 @@ public class PLAYER_Info : Photon.MonoBehaviour {
     private GameObject namePlate;
     [SerializeField]
     private Text nameText;
+    [SerializeField]
+    private MemberBox myMemberBox;
+    
+
+    private Button calibrateButton;
+    private Text calibrateText;
+
+
    
+
 
     //投票先のID
     private int votingDestinationID;
 
     //カルト教徒か否か
     private bool isCult;
+
+    //現在は役職：ヤンデレの恋人選択に使用
+    private int lovePersonID = -1;
 
     //夜の選択先
     [Header("Debug")]
@@ -86,10 +108,74 @@ public class PLAYER_Info : Photon.MonoBehaviour {
         ShowInfoBox(false);
         namePlate.SetActive(false);
         isCult = false;
-
+       
         if (myPV.isMine)
         {
+            rec.enabled = true;
+            PhotonVoiceSettings.Instance.VoiceDetection = true;
+            rec.Detect = true;
             myGvrViewer.gameObject.SetActive(true);
+            myAudioListener.enabled = true;
+        }else
+        {
+            rec.enabled = false;
+            myAudioListener.enabled = false;
+        }
+    }
+
+    void Start()
+    {
+        if(myPV.isMine && calibrateButton == null)
+        {
+            calibrateButton = GameObject.FindGameObjectWithTag("CalibrateButton").GetComponent<Button>();
+            calibrateButton.onClick.AddListener(CalibrateButtonOnClick);
+            calibrateText = calibrateButton.GetComponentInChildren<Text>();
+        }
+
+    }
+
+    void Update()
+    {
+        if(myPV.isMine && myPhase == DataBase.Phase.BRIEFINGROOM)
+        {
+            calibrateButton.interactable = !rec.VoiceDetectorCalibrating;
+            calibrateText.text = rec.VoiceDetectorCalibrating ? "キャリブレート中...":"キャリブレート(2s)";
+        }
+        if (!myPV.isMine)
+        {
+            
+            bool showVoicemark = spk != null && spk.IsPlaying &&
+                    PhotonVoiceNetwork.ClientState == ExitGames.Client.Photon.LoadBalancing.ClientState.Joined;
+            voiceImage.enabled = showVoicemark;
+            if (myMemberBox != null) myMemberBox.ShowVoiceImage(showVoicemark);
+        }else
+        {
+            if (myMemberBox != null)
+            {
+                bool showMyVoicemark = rec != null && rec.IsTransmitting &&
+                PhotonVoiceNetwork.ClientState == ExitGames.Client.Photon.LoadBalancing.ClientState.Joined;
+                myMemberBox.ShowVoiceImage(showMyVoicemark);
+            }
+        }
+    }
+
+    /// <summary>
+    /// ルーム内でのメンバーボックスをセットする
+    /// </summary>
+    /// <param name="_voiceMark"></param>
+    public void SetMemberBoxInRoom(MemberBox _memberBox)
+    {
+        myMemberBox = _memberBox;
+    }
+
+    /// <summary>
+    /// キャリブレートを行う
+    /// </summary>
+    private void CalibrateButtonOnClick()
+    {
+        if (rec && !rec.VoiceDetectorCalibrating)
+        {
+            rec.VoiceDetectorCalibrate(2000);
         }
     }
 
@@ -122,7 +208,7 @@ public class PLAYER_Info : Photon.MonoBehaviour {
     /// スキップが有効か返す
     /// </summary>
     /// <returns></returns>
-    public bool  Skip()
+    public bool Skip()
     {
         return isSkip;
     }
@@ -163,8 +249,8 @@ public class PLAYER_Info : Photon.MonoBehaviour {
     /// </summary>
     public void AssignPlayerInfo()
     {
-        if(myPV.isMine)
-            myPV.RPC("SyncPlayerInfo", PhotonTargets.All,PhotonNetwork.player.name,PhotonNetwork.player.ID);
+        if (myPV.isMine)
+            myPV.RPC("SyncPlayerInfo", PhotonTargets.All, PhotonNetwork.player.name, PhotonNetwork.player.ID);
     }
 
     /// <summary>
@@ -216,22 +302,22 @@ public class PLAYER_Info : Photon.MonoBehaviour {
     /// <param name="isActive"></param>
     public void ActiveMyCamera(bool isActive)
     {
-        if(myPV.isMine)
+        if (myPV.isMine)
         {
             myCamera.enabled = isActive;
 
-            if(isActive)
+            if (isActive)
             {
                 myGvrViewer.enabled = true;
-                
+
             }
             else
             {
                 myGvrViewer.enabled = false;
                 myGvrReticle.enabled = false;
             }
-        
-        }  
+
+        }
     }
 
     /// <summary>
@@ -270,7 +356,7 @@ public class PLAYER_Info : Photon.MonoBehaviour {
     /// <param name="roll"></param>
     public void AssignRoll(DataBase.Roll roll)
     {
-        myPV.RPC("SyncMyRoll", PhotonTargets.All,roll);
+        myPV.RPC("SyncMyRoll", PhotonTargets.All, roll);
         //カルトリーダーの場合自分をカルト信者として設定する
         if (myRoll == DataBase.Roll.CULTLEADER)
             ToCult();
@@ -283,7 +369,7 @@ public class PLAYER_Info : Photon.MonoBehaviour {
     public void ShowHeadMesh(bool _show)
     {
         MyHead.SetActive(false);
-        myPV.RPC("SyncShowMyHeadMesh", PhotonTargets.Others, _show);        
+        myPV.RPC("SyncShowMyHeadMesh", PhotonTargets.Others, _show);
     }
 
     /// <summary>
@@ -349,9 +435,9 @@ public class PLAYER_Info : Photon.MonoBehaviour {
     /// <param name="isDead"></param>
     private void SetMyDeadInfo(bool _isDead)
     {
-        if(myPV.isMine)
+        if (myPV.isMine)
         {
-            myPV.RPC("SyncMyDeadInfo",PhotonTargets.All,_isDead);
+            myPV.RPC("SyncMyDeadInfo", PhotonTargets.All, _isDead);
         }
     }
 
@@ -365,6 +451,8 @@ public class PLAYER_Info : Photon.MonoBehaviour {
         ShowBodyMesh(false);
         ShowNamePlate(false);
     }
+
+   
 
     /// <summary>
     /// インフォボックスを表示/非表示にする　※普通、自分の所有しているプレイヤーに対して行う
@@ -398,7 +486,7 @@ public class PLAYER_Info : Photon.MonoBehaviour {
         myPV.RPC("SyncNamePlate", PhotonTargets.All, playerName);
     }
 
-   
+
 
     /// <summary>
     /// プレイヤー名をインフォボックスにセットする
@@ -406,6 +494,14 @@ public class PLAYER_Info : Photon.MonoBehaviour {
     private void SetNameToInfoBox()
     {
         myInfoBox.SetName(playerName);
+    }
+
+    /// <summary>
+    /// ロール名をセットする
+    /// </summary>
+    public void SetRollNameToInfoBox()
+    {
+        myInfoBox.SetRollName(myRoll);
     }
 
     /// <summary>
@@ -445,7 +541,7 @@ public class PLAYER_Info : Photon.MonoBehaviour {
         myInfoBox.SetAliveCount(aliveMember);
     }
 
-   
+
     /// <summary>
     /// 投票先
     /// </summary>
@@ -471,14 +567,14 @@ public class PLAYER_Info : Photon.MonoBehaviour {
     {
         myPV.RPC("SyncVotingDestinationID", PhotonTargets.All, -1);
     }
-   
+
     /// <summary>
     /// 投票情報を全プレイヤーで共有する
     /// </summary>
     /// <param name="_id"></param>
     public void SetVotingDestinationID(int _id)
     {
-        myPV.RPC("SyncVotingDestinationID",PhotonTargets.All, _id);
+        myPV.RPC("SyncVotingDestinationID", PhotonTargets.All, _id);
     }
 
     /// <summary>
@@ -504,7 +600,7 @@ public class PLAYER_Info : Photon.MonoBehaviour {
     /// <returns></returns>
     public bool IsNoSkillPlayer()
     {
-        switch(myRoll)
+        switch (myRoll)
         {
             case DataBase.Roll.VILLAGER:
             case DataBase.Roll.NURSES:
@@ -518,7 +614,7 @@ public class PLAYER_Info : Photon.MonoBehaviour {
     /// <summary>
     /// カルト教徒になり、その情報を全プレイヤーシーンに反映させる
     /// </summary>
-    public  void ToCult()
+    public void ToCult()
     {
         myPV.RPC("SyncToCult", PhotonTargets.All);
     }
@@ -530,6 +626,55 @@ public class PLAYER_Info : Photon.MonoBehaviour {
     public bool IsCult()
     {
         return isCult;
+    }
+
+    /// <summary>
+    /// 役職：ヤンデレの恋人選択先を返す
+    /// </summary>
+    /// <returns>The person I.</returns>
+    public int LovePersonID()
+    {
+        return lovePersonID;
+    }
+
+    /// <summary>
+    /// 役職：ヤンデレが恋人を選択済みか返す
+    /// </summary>
+    /// <returns><c>true</c>, if love person was selecteded, <c>false</c> otherwise.</returns>
+    public bool SelectedLovePerson()
+    {
+        if (lovePersonID != -1)
+            return true;
+        else
+            return false;
+    }
+
+    /// <summary>
+    /// 役職：ヤンデレの恋人選択先をセットする
+    /// </summary>
+    /// <param name="_targetID">Target I.</param>
+    public void SetLovePersonID(int _targetID)
+    {
+        myPV.RPC("SyncLovePersonID", PhotonTargets.All, _targetID);
+    }
+
+    /// <summary>
+    /// ボイスを聞けるようにするかどうか
+    /// </summary>
+    /// <param name="islisten"></param>
+    public void ListenVoiceChat(bool islisten)
+    {
+        //PhotonVoiceNetwork.Client.GlobalAudioGroup = (islisten ? 0 : null);
+        rec.Transmit = islisten;
+        
+    }
+
+   
+
+    [PunRPC]
+    private void SyncLovePersonID(int _targetID)
+    {
+        lovePersonID = _targetID;
     }
 
     [PunRPC]
@@ -563,7 +708,7 @@ public class PLAYER_Info : Photon.MonoBehaviour {
         myRoll = roll;
     }
 
-   
+
 
     [PunRPC]
     private void SyncShowMyHeadMesh(bool _show)
@@ -622,7 +767,7 @@ public class PLAYER_Info : Photon.MonoBehaviour {
         {
             GetComponent<Fade>().fadeMode = Fade.FadeMode.FADEOUT;
             GetComponent<Fade>().FadeStart();
-           
+
         }
         yield return new WaitForSeconds(tmpDataBase.FadeTime);
         if (myPV.isMine)
@@ -632,7 +777,7 @@ public class PLAYER_Info : Photon.MonoBehaviour {
             foreach (GameObject _timerClock in GameObject.FindGameObjectsWithTag("TimeClock"))
             {
                 _timerClock.transform.LookAt(_pos);
-                _timerClock.transform.localEulerAngles = new Vector3(0,_timerClock.transform.eulerAngles.y, 0);
+                _timerClock.transform.localEulerAngles = new Vector3(0, _timerClock.transform.eulerAngles.y, 0);
             }
             gameObject.transform.position = _pos.position;
             gameObject.transform.rotation = _pos.rotation;
@@ -644,7 +789,7 @@ public class PLAYER_Info : Photon.MonoBehaviour {
 
         }
         yield return new WaitForSeconds(tmpDataBase.FadeTime);
-        if(myPV.isMine)
+        if (myPV.isMine)
         {
             //ネームプレートをすべてにむかせる
             foreach (GameObject _player in GameObject.FindGameObjectsWithTag("Player"))

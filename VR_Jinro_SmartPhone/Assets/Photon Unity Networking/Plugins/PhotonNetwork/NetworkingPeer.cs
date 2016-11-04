@@ -3797,11 +3797,12 @@ internal class NetworkingPeer : LoadBalancingPeer, IPhotonPeerListener
         // Debug.Log("OnLevelWasLoaded photonViewList.Count: " + photonViewList.Count); // Exit Games internal log
 
         List<int> removeKeys = new List<int>();
-        foreach (PhotonView view in this.photonViewList.Values)
+        foreach (KeyValuePair<int, PhotonView> kvp in this.photonViewList)
         {
+            PhotonView view = kvp.Value;
             if (view == null)
             {
-                removeKeys.Add(view.viewID);
+                removeKeys.Add(kvp.Key);
             }
         }
 

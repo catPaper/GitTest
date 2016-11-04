@@ -3,7 +3,8 @@ using System.Collections;
 using System.Collections.Generic;
 
 [RequireComponent(typeof(PhotonView))]
-public class MainGameManager : Photon.MonoBehaviour {
+public class MainGameManager : Photon.MonoBehaviour
+{
 
     [SerializeField]
     private CharacterList charaListScript;
@@ -36,6 +37,11 @@ public class MainGameManager : Photon.MonoBehaviour {
     private PLAYER_Info myPlayerInfo;
 
     /// <summary>
+    /// 死亡した人のリスト（夜襲撃された人も前日扱い）
+    /// </summary>
+    private List<PLAYER_Info>[] dayDeadList;
+
+    /// <summary>
     /// 自分を除いた生存プレイヤーリスト
     /// </summary>
     private List<PLAYER_Info> alivePlayerListWithOutMe;
@@ -46,6 +52,11 @@ public class MainGameManager : Photon.MonoBehaviour {
     private HOSTONLY_GameInfo hostOnly_GameInfo;
 
     private DataBase.Phase allMembersPhase;
+
+    /// <summary>
+    /// 勝利したプレイやリスト
+    /// </summary>
+    private List<PLAYER_Info> winPlayerList;
 
     //NoonTimeのスキップ処理の負荷を抑えるのに使用
     private float OldTime;
@@ -58,6 +69,9 @@ public class MainGameManager : Photon.MonoBehaviour {
 
     private void Awake()
     {
+        winPlayerList = new List<PLAYER_Info>();
+        dayDeadList = new List<PLAYER_Info>[100];
+        for (int i = 0; i < dayDeadList.Length; i++) dayDeadList[i] = new List<PLAYER_Info>();
         allMembersPhase = DataBase.Phase.BRIEFINGROOM;
         myPV = GetComponent<PhotonView>();
 
@@ -77,28 +91,28 @@ public class MainGameManager : Photon.MonoBehaviour {
         myPlayerPrefab.transform.position = setUpPhase.PlayerSpownPoint().position;
         myPlayerPrefab.transform.rotation = setUpPhase.PlayerSpownPoint().rotation;
 
-        
+
         AlivePlayerInfoFirstSetUp();
         //初回起動時にはVRセッティングフェーズに移行
         myPlayerInfo.SetMyPhase(DataBase.Phase.VRSETTING);
 
-        if(isHost)
+        if (isHost)
         {
             hostOnly_GameInfo.SetPlayerPrefabs();
         }
-        
+
         myPlayerInfo.FirstInfoBoxSetting();
         myPlayerInfo.ShowInfoBox(true);
     }
 
-   
+
 
     private void Update()
     {
         if (isHost)
         {
             //Phaseは全体のPhaseを中心に移行する
-            switch(allMembersPhase)
+            switch (allMembersPhase)
             {
                 case DataBase.Phase.BRIEFINGROOM:
                     //全員が次のシーンに行った場合、シーン全体のフェーズをVRSETTINGへ移行
@@ -106,8 +120,8 @@ public class MainGameManager : Photon.MonoBehaviour {
                     {
                         myPV.RPC("SyncExcutionPlayerID", PhotonTargets.All, -1);
                         myPV.RPC("SyncAliveCount", PhotonTargets.All, hostOnly_GameInfo.AliveMemberNumber());
-  
-                                                                      
+
+
                         myPV.RPC("SyncAllMembersPhase", PhotonTargets.All, DataBase.Phase.VRSETTING);
                         SetLightDirection(DataBase.Phase.BRIEFINGROOM);
                         hostOnly_GameInfo.StartSetting();
@@ -116,6 +130,8 @@ public class MainGameManager : Photon.MonoBehaviour {
                         boardPlayerInfoListForResult.InitPlayerList();
                         setUpPhase.SetUpPhase_Start();
                         HOSTONLY_SetHeadMesh();
+                        myPV.RPC("SyncRollNameToInfoBox", PhotonTargets.All);
+                        
                     }
                     break;
                 case DataBase.Phase.VRSETTING:
@@ -140,6 +156,12 @@ public class MainGameManager : Photon.MonoBehaviour {
                     //全員が次のシーンに行った場合、シーン全体をNOONへ移行
                     if (hostOnly_GameInfo.IsAllMemberSamePhase(DataBase.Phase.NOON))
                     {
+                        //処刑者リストの確認
+                        if (HOSTONLY_CheckDeadListForYandere())
+                        {
+                            HOSTONLY_ResultSetting(winCamp);
+                            break;
+                        }
                         //ゲーム終了チェック
                         if (HOSTONLY_CheckGameEnd())
                         {
@@ -197,6 +219,47 @@ public class MainGameManager : Photon.MonoBehaviour {
             }
         }
 
+
+        //ボイスチャットの設定
+       
+        switch(allMembersPhase)
+        {
+            case DataBase.Phase.VRSETTING:
+            case DataBase.Phase.ROLLCONFIRM:
+            case DataBase.Phase.VOTETIME:
+                myPlayerInfo.ListenVoiceChat(false);
+                break;
+            case DataBase.Phase.BRIEFINGROOM:
+            case DataBase.Phase.MORNING:
+            case DataBase.Phase.NOON:
+            case DataBase.Phase.EVENING:
+                PhotonVoiceNetwork.Client.GlobalAudioGroup = (int)DataBase.AudioGroup.ALL;
+                myPlayerInfo.ListenVoiceChat(true);
+                break;
+            case DataBase.Phase.NIGHT:
+                if(myPlayerInfo.IsWereWolf() || myPlayerInfo.IsDead())
+                {
+                    PhotonVoiceNetwork.Client.GlobalAudioGroup = (int)DataBase.AudioGroup.WEREWOLF;
+                    myPlayerInfo.ListenVoiceChat(true);
+                }
+                else
+                {                  
+                    myPlayerInfo.ListenVoiceChat(false);
+                }
+                break;
+            case DataBase.Phase.RESULT:
+                PhotonVoiceNetwork.Client.GlobalAudioGroup = (int)DataBase.AudioGroup.ALL;
+                myPlayerInfo.ListenVoiceChat(true);
+                break;
+
+
+        }
+        if (myPlayerInfo.IsDead() && allMembersPhase != DataBase.Phase.RESULT)
+        {
+            myPlayerInfo.ListenVoiceChat(false);
+        }
+
+
         switch (allMembersPhase)
         {
             case DataBase.Phase.VRSETTING:
@@ -206,22 +269,22 @@ public class MainGameManager : Photon.MonoBehaviour {
                     myPlayerInfo.ReCenter();
 #endif
                     myPlayerInfo.ActiveMyCamera(true);
-                    
+
                 }
                 break;
             case DataBase.Phase.NOON:
-                if(isHost)
+                if (isHost)
                 {
                     //Debug用
-                    if(Input.GetKeyDown(KeyCode.S))
+                    if (Input.GetKeyDown(KeyCode.S))
                     {
                         hostOnly_GameInfo.SkipNoonTime();
                     }
-                    if(Time.time > OldTime)
+                    if (Time.time > OldTime)
                     {
                         int skipCount = 0;
                         OldTime = Time.time + 1;    //１秒後にまた呼び出し
-                        foreach(PLAYER_Info _info in hostOnly_GameInfo.AliveAllMemberInfo())
+                        foreach (PLAYER_Info _info in hostOnly_GameInfo.AliveAllMemberInfo())
                         {
                             if (_info.Skip())
                                 skipCount++;
@@ -233,10 +296,10 @@ public class MainGameManager : Photon.MonoBehaviour {
                 }
                 break;
             case DataBase.Phase.NIGHT:
-                if(isHost)
+                if (isHost)
                 {
                     //Debug用
-                    if(Input.GetKeyDown(KeyCode.S))
+                    if (Input.GetKeyDown(KeyCode.S))
                     {
                         hostOnly_GameInfo.SkipNightTime();
                     }
@@ -245,7 +308,55 @@ public class MainGameManager : Photon.MonoBehaviour {
 
         }
 
-       
+
+    }
+
+    /// <summary>
+    /// 死亡者リストをもとに確認事項を処理する（
+    /// </summary>
+    private bool HOSTONLY_CheckDeadListForYandere()
+    {
+        if (hostOnly_GameInfo.ElapsedDayCount() != 0)
+        {
+            int todayNumber = hostOnly_GameInfo.ElapsedDayCount();
+            int yesterdayNumber = todayNumber - 1;
+
+            if (dayDeadList[yesterdayNumber].Count != 0 && dayDeadList[todayNumber].Count != 0)
+            {
+                List<PLAYER_Info> yandereList = new List<PLAYER_Info>();
+                foreach (PLAYER_Info targetInfo in dayDeadList[todayNumber])
+                {
+                    if (targetInfo.MyRoll() == DataBase.Roll.YANDERE)
+                    {
+                        yandereList.Add(targetInfo);
+                    }
+                }
+
+                foreach (PLAYER_Info yandere in yandereList)
+                {
+                    foreach (PLAYER_Info deadPlayerInfo in dayDeadList[yesterdayNumber])
+                    {
+                        if (yandere.LovePersonID() == deadPlayerInfo.PlayerID())
+                        {
+                            winPlayerList.Add(yandere);
+                            winPlayerList.Add(deadPlayerInfo);
+                            break;
+                        }
+                    }
+                }
+                if (winPlayerList.Count != 0)
+                {
+                    winCamp = DataBase.Camp.YANDERE;
+                    return true;
+                }
+                else
+                {
+                    return false;
+                }
+            }
+        }
+
+        return false;
     }
 
     /// <summary>
@@ -263,7 +374,7 @@ public class MainGameManager : Photon.MonoBehaviour {
     /// </summary>
     private void HOSTONLY_NightActProcess()
     {
-       
+
         List<int> jinroSelectTargetIDList = new List<int>();
         List<int> hunterProtectedTargetIDList = new List<int>();
         foreach (PLAYER_Info _info in hostOnly_GameInfo.AliveAllMemberInfo())
@@ -280,6 +391,10 @@ public class MainGameManager : Photon.MonoBehaviour {
                     boardPlayerInfoList.UpdateIsCult(_info.NightActDestination(), true);
                     boardPlayerInfoListForResult.UpdateIsCult(_info.NightActDestination(), true);
                 }
+                if(_info.MyRoll() == DataBase.Roll.YANDERE && !_info.SelectedLovePerson() && _info.NightActDestination() != -1)
+                {
+                    _info.SetLovePersonID(_info.NightActDestination());
+                }
             }
         }
         //襲撃対象リスト
@@ -287,12 +402,12 @@ public class MainGameManager : Photon.MonoBehaviour {
         //対象をランダムに選択
         int JinroSelectIndex = Random.Range(0, jinroSelectTargetIDList.Count);
         int raidedID = -1;
-        if(jinroSelectTargetIDList.Count != 0)
+        if (jinroSelectTargetIDList.Count != 0)
             raidedID = jinroSelectTargetIDList[JinroSelectIndex];
 
         //狩人に守られていた場合は襲撃失敗(通常１人だが特殊ルールも考え、全員が別々に守れる
         bool isSaved = false;
-        foreach(int hunterProtectID in hunterProtectedTargetIDList)
+        foreach (int hunterProtectID in hunterProtectedTargetIDList)
         {
             if (hunterProtectID == raidedID)
             {
@@ -300,11 +415,12 @@ public class MainGameManager : Photon.MonoBehaviour {
                 break;
             }
         }
-        if(!isSaved)
+        if (!isSaved)
         {
-            myPV.RPC("SyncDeadIfRaided",PhotonTargets.All, raidedID);
+            myPV.RPC("SyncDeadIfRaided", PhotonTargets.All, raidedID);
             boardPlayerInfoList.UpdateDeadInfo(raidedID, true);
             boardPlayerInfoListForResult.UpdateDeadInfo(raidedID, true);
+            myPV.RPC("SyncAddDeadPlayerList", PhotonTargets.All, raidedID, hostOnly_GameInfo.ElapsedDayCount());
         }
         //ボードの更新
         string raidedName = SearchByID(raidedID).PlayerName();
@@ -331,7 +447,7 @@ public class MainGameManager : Photon.MonoBehaviour {
         alivePlayerListWithOutMe = new List<PLAYER_Info>();
         foreach (GameObject go in GameObject.FindGameObjectsWithTag("Player"))
         {
-            if(go != myPlayerPrefab)
+            if (go != myPlayerPrefab)
                 alivePlayerListWithOutMe.Add(go.GetComponent<PLAYER_Info>());
         }
     }
@@ -351,19 +467,29 @@ public class MainGameManager : Photon.MonoBehaviour {
     /// </summary>
     public void SetAlivePlayerInfoWithoutMe()
     {
-        for(int i= 0;i<alivePlayerListWithOutMe.Count;i++)
+        for (int i = 0; i < alivePlayerListWithOutMe.Count; i++)
         {
-            if(alivePlayerListWithOutMe[i] ==null)
+            if (alivePlayerListWithOutMe[i] == null)
             {
                 alivePlayerListWithOutMe.RemoveAt(i);
                 continue;
             }
-            if(alivePlayerListWithOutMe[i].IsDead())
+            if (alivePlayerListWithOutMe[i].IsDead())
             {
                 alivePlayerListWithOutMe.RemoveAt(i);
                 continue;
             }
         }
+    }
+
+    /// <summary>
+    /// 役職:やんでれが既に恋人を選択しているか
+    /// </summary>
+    /// <returns>The by I.</returns>
+    /// <param name="_id">Identifier.</param>
+    public bool IsSelectedLovePerson()
+    {
+        return myPlayerInfo.SelectedLovePerson();
     }
 
     /// <summary>
@@ -373,7 +499,7 @@ public class MainGameManager : Photon.MonoBehaviour {
     /// <returns></returns>
     public PLAYER_Info SearchByID(int _id)
     {
-        foreach( GameObject _infoObject in GameObject.FindGameObjectsWithTag("Player"))
+        foreach (GameObject _infoObject in GameObject.FindGameObjectsWithTag("Player"))
         {
             if (_infoObject.GetComponent<PLAYER_Info>().PlayerID() == _id)
                 return _infoObject.GetComponent<PLAYER_Info>();
@@ -388,6 +514,8 @@ public class MainGameManager : Photon.MonoBehaviour {
         return myPlayerInfo.PlayerID();
     }
 
+
+
     /// <summary>
     /// 処刑者を決定する    //今回は二人以上同じ数だった場合処刑無し　今後は決選投票を実装予定
     /// </summary>
@@ -399,7 +527,7 @@ public class MainGameManager : Photon.MonoBehaviour {
         foreach (PLAYER_Info recievePlayer_info in alivePlayersList)
         {
             recieveVoteList.Add(0);
-            foreach(PLAYER_Info votePlayer_info in alivePlayersList)
+            foreach (PLAYER_Info votePlayer_info in alivePlayersList)
             {
                 //投票先が一致した場合投票
                 if (votePlayer_info.VotingDestinationID() == recievePlayer_info.PlayerID())
@@ -410,7 +538,7 @@ public class MainGameManager : Photon.MonoBehaviour {
         int maxVote = 0;
 
         //最大受票数の検索
-        foreach(int recieveVote in recieveVoteList)
+        foreach (int recieveVote in recieveVoteList)
         {
             if (recieveVote > maxVote)
                 maxVote = recieveVote;
@@ -420,14 +548,14 @@ public class MainGameManager : Photon.MonoBehaviour {
         int tieCount = 0;
         PLAYER_Info targetInfo = new PLAYER_Info();
         //処刑者の決定
-        for(int i= 0;i<recieveVoteList.Count;i++)
+        for (int i = 0; i < recieveVoteList.Count; i++)
         {
-            if(recieveVoteList[i] == maxVote)
+            if (recieveVoteList[i] == maxVote)
             {
                 targetInfo = alivePlayersList[i];
                 tieCount++;
             }
-            if(tieCount > 1)
+            if (tieCount > 1)
             {
                 //現在はかぶったら処刑無し
                 myPV.RPC("SyncExcutionPlayerID", PhotonTargets.All, -1);
@@ -438,21 +566,23 @@ public class MainGameManager : Photon.MonoBehaviour {
         //観戦ボードの更新
         boardPlayerInfoList.UpdateDeadInfo(targetInfo.PlayerID(), true);
         boardPlayerInfoListForResult.UpdateDeadInfo(targetInfo.PlayerID(), true);
-        myPV.RPC("SyncExcutionPlayerID", PhotonTargets.All,targetInfo.PlayerID());
+        myPV.RPC("SyncExcutionPlayerID", PhotonTargets.All, targetInfo.PlayerID());
+        //処刑者を当日死亡者リストに追加
+        myPV.RPC("SyncAddDeadPlayerList", PhotonTargets.All, targetInfo.PlayerID(), hostOnly_GameInfo.ElapsedDayCount());
     }
 
     public void HOSTONLY_SceneMoveSetting(DataBase.Phase _phase, bool isShowHeadMesh)
     {
-        if(!myPV.isMine)
+        if (!myPV.isMine)
         {
             Debug.Log("ホスト以外がアクセスしています");
             return;
         }
         //経過日数の更新
-        if(_phase == DataBase.Phase.MORNING)
+        if (_phase == DataBase.Phase.MORNING)
         {
             hostOnly_GameInfo.AddElapsedDayCount();
-            myPV.RPC("SyncDayCount", PhotonTargets.All,hostOnly_GameInfo.ElapsedDayCount());
+            myPV.RPC("SyncDayCount", PhotonTargets.All, hostOnly_GameInfo.ElapsedDayCount());
         }
         myPV.RPC("SyncAllMembersPhase", PhotonTargets.All, _phase);
         myPV.RPC("SyncPhase", PhotonTargets.All, _phase);
@@ -468,16 +598,16 @@ public class MainGameManager : Photon.MonoBehaviour {
     /// </summary>
     public void HOSTONLY_UpdateDeadInfoToLookingRoomInfoBoard()
     {
-        foreach(PLAYER_Info playerInfo in hostOnly_GameInfo.DeadAllMemberInfo())
+        foreach (PLAYER_Info playerInfo in hostOnly_GameInfo.DeadAllMemberInfo())
         {
             boardPlayerInfoList.UpdateDeadInfo(playerInfo.PlayerID(), true);
             boardPlayerInfoListForResult.UpdateDeadInfo(playerInfo.PlayerID(), true);
         }
     }
 
-   /// <summary>
-   /// ライブカメラを所定位置にセットする
-   /// </summary>
+    /// <summary>
+    /// ライブカメラを所定位置にセットする
+    /// </summary>
     public void HOSTONLY_SetLiveCamera()
     {
         myPV.RPC("SyncSetLiveCamera", PhotonTargets.All);
@@ -547,7 +677,7 @@ public class MainGameManager : Photon.MonoBehaviour {
     /// </summary>
     private void HOSTONLY_InvokeRepeatTimerCount()
     {
-        if(allMembersPhase == DataBase.Phase.NOON)
+        if (allMembersPhase == DataBase.Phase.NOON)
         {
             int noonRestTime = hostOnly_GameInfo.NoonRestTime();
             noonPhase.HOSTONLY_UpdateTimerText(noonRestTime);
@@ -557,7 +687,7 @@ public class MainGameManager : Photon.MonoBehaviour {
                 CancelInvoke("HOSTONLY_InvokeRepeatTimerCount");
             }
         }
-        if(allMembersPhase == DataBase.Phase.NIGHT)
+        if (allMembersPhase == DataBase.Phase.NIGHT)
         {
             int nightRestTime = hostOnly_GameInfo.NightRestTime();
             nightPhase.HOSTONLY_UpdateTimerText(nightRestTime);
@@ -575,7 +705,7 @@ public class MainGameManager : Photon.MonoBehaviour {
     private void HOSTONLY_SetRollList()
     {
         List<DataBase.Roll> _rollList = new List<DataBase.Roll>();
-        foreach(PLAYER_Info _info in hostOnly_GameInfo.AliveAllMemberInfo())
+        foreach (PLAYER_Info _info in hostOnly_GameInfo.AliveAllMemberInfo())
         {
             _rollList.Add(_info.MyRoll());
         }
@@ -588,7 +718,7 @@ public class MainGameManager : Photon.MonoBehaviour {
 
             rollListText += tmpDatabase.RollName(_rollList[i]) + "    ";
         }
-        myPV.RPC("SyncRollList", PhotonTargets.All,rollListText);
+        myPV.RPC("SyncRollList", PhotonTargets.All, rollListText);
     }
 
     /// <summary>
@@ -597,15 +727,15 @@ public class MainGameManager : Photon.MonoBehaviour {
     /// <returns></returns>
     public List<PLAYER_Info> ShufflePlayerInfo(List<PLAYER_Info> origin_Info)
     {
-        if(origin_Info.Count <=1)
+        if (origin_Info.Count <= 1)
         {
             return origin_Info;
         }
         PLAYER_Info tmp_Info;
         int firstRandIndex, secondRandIndex;
-        for(int i= 0;i<20;i++)
+        for (int i = 0; i < 20; i++)
         {
-            
+
             firstRandIndex = Random.Range(0, origin_Info.Count);
             do
             {
@@ -633,12 +763,12 @@ public class MainGameManager : Photon.MonoBehaviour {
         int IDCount = 0;
         int currentIDCount;
         List<int> mostCommonIDList = new List<int>();
-        for(int i= 0;i<_idList.Count;i++)
+        for (int i = 0; i < _idList.Count; i++)
         {
             currentIDCount = 1;
-            for(int j = 1;j<_idList.Count; j++)
+            for (int j = 1; j < _idList.Count; j++)
             {
-                if(_idList[i] == _idList[j])
+                if (_idList[i] == _idList[j])
                 {
                     currentIDCount++;
                 }
@@ -664,8 +794,9 @@ public class MainGameManager : Photon.MonoBehaviour {
     /// <returns></returns>
     public bool HOSTONLY_CheckGameEnd()
     {
+
         //生存者全員がカルト信者だった場合、カルトリーダーの勝利(カルトリーダーが少なくとも一人生存)
-        if(hostOnly_GameInfo.IsAllAliveMemberCult())
+        if (hostOnly_GameInfo.IsAllAliveMemberCult())
         {
             winCamp = DataBase.Camp.CULT;
             return true;
@@ -700,7 +831,7 @@ public class MainGameManager : Photon.MonoBehaviour {
     /// </summary>
     public void DisconnectProcess()
     {
-        if(isHost)
+        if (isHost)
         {
             Destroy(hostOnly_GameInfo.gameObject);
         }
@@ -724,7 +855,7 @@ public class MainGameManager : Photon.MonoBehaviour {
     {
         DataBase.DayTime _dayTime;
 
-        switch(_phase)
+        switch (_phase)
         {
             case DataBase.Phase.BRIEFINGROOM:
             case DataBase.Phase.VRSETTING:
@@ -747,6 +878,12 @@ public class MainGameManager : Photon.MonoBehaviour {
 
         Vector3 defaulutPos = Sun.gameObject.transform.eulerAngles;
         Sun.gameObject.transform.eulerAngles = new Vector3((int)_dayTime, defaulutPos.y, defaulutPos.z);
+    }
+
+    [PunRPC]
+    private void SyncRollNameToInfoBox()
+    {
+        myPlayerInfo.SetRollNameToInfoBox();
     }
 
     [PunRPC]
@@ -774,7 +911,7 @@ public class MainGameManager : Photon.MonoBehaviour {
     {
         List<Transform> _spownPoints = new List<Transform>();
 
-        switch(AllMembersPhase())
+        switch (AllMembersPhase())
         {
             case DataBase.Phase.MORNING:
                 _spownPoints = morningPhase.SpownList();
@@ -802,10 +939,12 @@ public class MainGameManager : Photon.MonoBehaviour {
             {
                 myPlayerInfo.MoveAndFade(_spownPoints[0]);
             }
-            else{
-                myPlayerInfo.MoveAndFade(_spownPoints[myPlayerInfo.PlayerID()-1]);
+            else
+            {
+                myPlayerInfo.MoveAndFade(_spownPoints[myPlayerInfo.PlayerID() - 1]);
             }
-        }else
+        }
+        else
         {
             myPlayerInfo.MoveAndFade(lookingRoom.DeadPos());
         }
@@ -851,13 +990,13 @@ public class MainGameManager : Photon.MonoBehaviour {
     {
         myPlayerInfo.SetPhaseToInfoBox(_phase);
     }
-	
+
     [PunRPC]
     private void SyncAliveCount(int _aliveCount)
     {
         myPlayerInfo.SetAliveCountToInfoBox(_aliveCount);
-    } 
-   
+    }
+
     [PunRPC]
     private void SyncAllPlayerRecieveVoteReset()
     {
@@ -880,7 +1019,7 @@ public class MainGameManager : Photon.MonoBehaviour {
     [PunRPC]
     private void SyncIfExcusion()
     {
-        if(myPlayerInfo.PlayerID() == excutionPlayerID)
+        if (myPlayerInfo.PlayerID() == excutionPlayerID)
             myPlayerInfo.DeadProcess();
     }
 
@@ -908,9 +1047,10 @@ public class MainGameManager : Photon.MonoBehaviour {
     private void SyncSuspectedCountEachPlayer()
     {
         int suspectedCount = 0;
-        foreach(PLAYER_Info _playerInfo in alivePlayerListWithOutMe)
+        foreach (PLAYER_Info _playerInfo in alivePlayerListWithOutMe)
         {
-            if (_playerInfo.IsNoSkillPlayer())
+            //スキルを持たないプレイヤーは疑うことができ、やんでれは役職選択後は疑うことができる
+            if (_playerInfo.IsNoSkillPlayer() || _playerInfo.SelectedLovePerson())
             {
                 if (_playerInfo.NightActDestination() == myPlayerInfo.PlayerID())
                     suspectedCount++;
@@ -930,6 +1070,13 @@ public class MainGameManager : Photon.MonoBehaviour {
     private void SyncSetHeadMesh()
     {
         myPlayerInfo.SetMyHeadMesh(charaListScript.CharaMeshByIndex(myPlayerInfo.PlayerID()));
+    }
+
+    [PunRPC]
+    private void SyncAddDeadPlayerList(int targetID, int todayNumber)
+    {
+        PLAYER_Info targetInfo = SearchByID(targetID);
+        dayDeadList[todayNumber].Add(targetInfo);
     }
 
 }

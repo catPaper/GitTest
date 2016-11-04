@@ -15,8 +15,9 @@ MonoBehaviour:
   Protocol: 0
   ServerAddress: 
   ServerPort: 5055
+  VoiceServerPort: 5055
   AppID: 7fe6cbb3-9400-4cec-b5c1-97d727bc6228
-  VoiceAppID: 
+  VoiceAppID: f6359ce5-cac5-4927-8abe-a9f0754d4385
   PreferredRegion: 3
   EnabledRegions: -1
   JoinLobby: 0
@@ -95,4 +96,9 @@ MonoBehaviour:
   - SyncCultInfo
   - SyncAllAlivePlayerShowHeadAndBody
   - SyncShowMyBodyMesh
+  - SyncLovePersonID
+  - SyncAddDeadPlayerList
+  - SyncListenVoiceChat
+  - SyncRollNameToInfoBox
+  - SyncMemberBoxes
   DisableAutoOpenWizard: 1

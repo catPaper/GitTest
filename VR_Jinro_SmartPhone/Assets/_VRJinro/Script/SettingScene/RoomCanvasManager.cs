@@ -1,5 +1,6 @@
 ﻿using UnityEngine;
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine.UI;
 
 [RequireComponent(typeof(PhotonView))]
@@ -15,7 +16,10 @@ public class RoomCanvasManager : Photon.MonoBehaviour {
     [SerializeField]
     private Text memberCountText;
     [SerializeField]
+    private Text roomNoText;
+    [SerializeField]
     private GameObject memberList;
+
 
     private PhotonView myPV;
     //ホストが定めるゲームプレイヤー数
@@ -50,8 +54,8 @@ public class RoomCanvasManager : Photon.MonoBehaviour {
     }
 
     public void SetRoomCanvas()
-    {
-        
+    { 
+       
         if (setManager.isHost)
         {
             //一人のためRPC無し
@@ -60,7 +64,8 @@ public class RoomCanvasManager : Photon.MonoBehaviour {
             hostStartButton.gameObject.SetActive(true);
             hostDisconnectButton.gameObject.SetActive(true);
             disconnectText.text = "解散する";
-        }else
+        }
+        else
         {
             hostStartButton.gameObject.SetActive(false);
             hostDisconnectButton.gameObject.SetActive(false);
@@ -71,15 +76,26 @@ public class RoomCanvasManager : Photon.MonoBehaviour {
     public virtual void OnPhotonPlayerConnected(PhotonPlayer localPlayer)
     {
         AddNewPlayer(localPlayer.name);
-       
+
+        setManager.SendPlayerInfo(localPlayer);
+
         if (setManager.isHost)
         {
             myPV.RPC("SyncPlayerList", localPlayer);
             myPV.RPC("SyncPlayerCount", PhotonTargets.All, gamePlayMemberNumber);
+            
         }
 
-        setManager.SendPlayerInfo(localPlayer);
+        //すこし遅れさせ、同期をはかる、TODOもっとましな同期方法
+        Invoke("AllUpdateMemberBox", 2f);
+        
 
+        
+    }
+
+    private void AllUpdateMemberBox()
+    {
+        myPV.RPC("SyncMemberBoxes", PhotonTargets.All);
     }
 
 
@@ -109,17 +125,51 @@ public class RoomCanvasManager : Photon.MonoBehaviour {
         }
     }
 
+
+
     public virtual void OnLeftRoom()
     {
        //TODO 退出者の削除
         Debug.Log("LeftRoom");
     }
 
+    public virtual void OnJoinedRoom()
+    {
+        
+        roomNoText.text = PhotonNetwork.room.name;
+        
+    }
+
+    /// <summary>
+    /// メンバーボックスのリストを更新する
+    /// </summary>
+    private void UpdateMemberBoxes()
+    {
+        
+        MemberBox[] memberBoxes = memberList.GetComponentsInChildren<MemberBox>();
+
+        GameObject[] players = GameObject.FindGameObjectsWithTag("Player");
+        foreach (MemberBox mBox in memberBoxes)
+        {
+            foreach (GameObject go in players)
+            {
+                if (go.GetComponent<PLAYER_Info>().PlayerName() == mBox.PlayerNameText())
+                {
+                    go.GetComponent<PLAYER_Info>().SetMemberBoxInRoom(mBox);
+                    break;
+                }
+            }
+        }
+    }
+
+
     private void AddNewPlayer(string userName)
     {
         GameObject newMeber = Instantiate(memberBoxPrefab,memberList.transform) as GameObject;
-        newMeber.GetComponentInChildren<Text>().text = userName;
+        newMeber.GetComponent<MemberBox>().SetPlayerName(userName);
         newMeber.transform.localScale = new Vector3(1, 1, 1);
+
+        UpdateMemberBoxes();   
     }
 
     /// <summary>
@@ -128,6 +178,12 @@ public class RoomCanvasManager : Photon.MonoBehaviour {
     public void AllPlayerSortList()
     {
         myPV.RPC("SortPlayerList", PhotonTargets.All);
+    }
+
+    [PunRPC]
+    private void SyncMemberBoxes()
+    {
+        UpdateMemberBoxes();
     }
 
     [PunRPC]

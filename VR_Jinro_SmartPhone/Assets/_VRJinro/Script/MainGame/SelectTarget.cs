@@ -166,6 +166,9 @@ public class SelectTarget : MonoBehaviour {
                 case DataBase.Roll.CULTLEADER:
                     resultText.text = _info.PlayerName() + "をカルト信者にします。";
                     break;
+                case DataBase.Roll.YANDERE:
+                    resultText.text = _info.PlayerName() + "を選択します。";
+                    break;
             }
         }
     }

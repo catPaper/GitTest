@@ -8,7 +8,7 @@
 // <author>developer@exitgames.com</author>
 // ----------------------------------------------------------------------------
 
-//#define PHOTON_VOICE
+#define PHOTON_VOICE
 
 using System;
 using System.Collections.Generic;

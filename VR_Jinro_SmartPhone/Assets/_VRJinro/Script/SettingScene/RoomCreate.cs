@@ -1,5 +1,6 @@
 ﻿using UnityEngine;
 using System.Collections;
+using System;
 using UnityEngine.UI;
 
 public class RoomCreate : Photon.MonoBehaviour {
@@ -14,6 +15,8 @@ public class RoomCreate : Photon.MonoBehaviour {
     private SettingManager setManager;
 
     private RoomOptions roomOptions;
+
+    
 
     private GameObject myPlayerPrefab;
 
@@ -38,6 +41,24 @@ public class RoomCreate : Photon.MonoBehaviour {
         }
     }
 
+    /// <summary>
+    /// ランダムなルームIDを生成する
+    /// </summary>
+    private string GenerateRoomID()
+    {
+        DateTime passDate = new DateTime();
+        passDate = DateTime.Now;
+        string roomNo = "";
+        roomNo += (((passDate.Minute / 10) + (passDate.Second % 10)) / 2).ToString();   //0～9
+        roomNo += (((passDate.Second / 10) + (passDate.Minute % 10)) / 2).ToString();   //0～9
+        for (int i= 0;i<3;i++)
+        {
+            roomNo += UnityEngine.Random.Range(0, 9).ToString();
+        }
+        
+        return roomNo;
+    }
+
 
     // below, we implement some callbacks of PUN
     // you can find PUN's callbacks in the class PunBehaviour or in enum PhotonNetworkingMessage
@@ -48,8 +69,10 @@ public class RoomCreate : Photon.MonoBehaviour {
         if (setManager.isHost)
         {
             Debug.Log("OnConnectedToMaster() was called by PUN. Now this client is connected and could join a room. Calling: PhotonNetwork.CreateRoom();");
-          
-            PhotonNetwork.CreateRoom(null,roomOptions , null);
+            string roomNo = GenerateRoomID();
+            
+            PhotonNetwork.CreateRoom(roomNo,roomOptions , null);
+            Debug.Log("lobby=" + PhotonNetwork.lobby + "::");
         }
     }
 
@@ -87,6 +110,7 @@ public class RoomCreate : Photon.MonoBehaviour {
             Debug.Log("OnJoinedRoom() called by PUN. Now this client is in a room. From here on, your game would be running. For reference, all callbacks are listed in enum: PhotonNetworkingMessage");
             GameObject.FindGameObjectWithTag("Manager").GetComponent<CanvasManager>().OpenRoomCanvas();
             setManager.CreatePlayerPrefab();
+            PhotonVoiceNetwork.Connect();
         }
     }
 }

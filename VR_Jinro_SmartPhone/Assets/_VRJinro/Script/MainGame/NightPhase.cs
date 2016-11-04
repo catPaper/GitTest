@@ -4,7 +4,8 @@ using System.Collections.Generic;
 using UnityEngine.UI;
 
 [RequireComponent(typeof(PhotonView))]
-public class NightPhase : Photon.MonoBehaviour {
+public class NightPhase : Photon.MonoBehaviour
+{
     [SerializeField]
     private MainGameManager mgManager;
     [SerializeField]
@@ -34,16 +35,16 @@ public class NightPhase : Photon.MonoBehaviour {
 
     void Update()
     {
-        if(mgManager.AllMembersPhase() == DataBase.Phase.NIGHT)
+        if (mgManager.AllMembersPhase() == DataBase.Phase.NIGHT)
         {
             int searchID = selectTargetScript.SearchSelectTargetID(mgManager.MySelectObject());
-            
+
             if (searchID != -1)
             {
                 lateSelectID = searchID;
                 targetInfo = mgManager.SearchByID(searchID);
                 selectTargetScript.SetResultText(DataBase.Phase.NIGHT, targetInfo, mgManager.MyRoll());
-                if(mgManager.MyRoll() == DataBase.Roll.DIVINER)
+                if (mgManager.MyRoll() == DataBase.Roll.DIVINER)
                 {
                     selectTargetScript.HideTargets();
                 }
@@ -56,7 +57,7 @@ public class NightPhase : Photon.MonoBehaviour {
                 mgManager.SetNightActDestination(lateSelectID);
                 mgManager.SetPlayerPhase(DataBase.Phase.MORNING);
             }
-            if(Input.GetKeyDown(KeyCode.A))
+            if (Input.GetKeyDown(KeyCode.A))
             {
                 selectTargetScript.ShowDicisonButton(true);
             }
@@ -117,12 +118,12 @@ public class NightPhase : Photon.MonoBehaviour {
             }
         }
         //カルトの除外設定
-        if(mgManager.MyRoll() == DataBase.Roll.CULTLEADER)
+        if (mgManager.MyRoll() == DataBase.Roll.CULTLEADER)
         {
             //カルト信者は除外
-            for(int i= 0;i< _infoList.Count;i++)
+            for (int i = 0; i < _infoList.Count; i++)
             {
-                if(_infoList[i].IsCult())
+                if (_infoList[i].IsCult())
                 {
                     _infoList.RemoveAt(i);
                     continue;
@@ -130,15 +131,22 @@ public class NightPhase : Photon.MonoBehaviour {
             }
         }
         _infoList = mgManager.ShufflePlayerInfo(_infoList);
-        selectTargetScript.SetTargetsSetting(_infoList,mgManager.GameCharacterList());
+        selectTargetScript.SetTargetsSetting(_infoList, mgManager.GameCharacterList());
         selectTargetScript.ShowSetUp();
         if (mgManager.MyRoll() == DataBase.Roll.NURSES)
         {
             selectTargetScript.SetNursesResult(mgManager.SearchByID(mgManager.ExcutionPlayerID()), (mgManager.ExcutionPlayerID() != -1));
         }
         rollNameText.text = tmpDatabase.RollName(mgManager.MyRoll());
-        explainText.text = tmpDatabase.MyNightActExplain(mgManager.MyRoll());
-
+        //役職:ヤンデレは初日以外は村人と同じテキストを表示
+        if (mgManager.MyRoll() == DataBase.Roll.YANDERE && mgManager.IsSelectedLovePerson())
+        {
+            explainText.text = tmpDatabase.MyNightActExplain(DataBase.Roll.VILLAGER);
+        }
+        else
+        {
+            explainText.text = tmpDatabase.MyNightActExplain(mgManager.MyRoll());
+        }
         //TODO 生存しているカルト信者のリスト表示
     }
 }

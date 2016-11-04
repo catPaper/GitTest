@@ -96,6 +96,7 @@ public class RandomJoinRoom : Photon.MonoBehaviour {
             Debug.LogError("Cause: " + cause);
         }
     }
+    
 
     /// <summary>
     /// ルームに入れたときに呼ばれる
@@ -110,6 +111,7 @@ public class RandomJoinRoom : Photon.MonoBehaviour {
             GameObject.FindGameObjectWithTag("Manager").GetComponent<CanvasManager>().OpenRoomCanvas();
 
             setManager.CreatePlayerPrefab();
+            PhotonVoiceNetwork.Connect();
         }
     }
 }

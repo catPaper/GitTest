@@ -13,6 +13,7 @@ TagManager:
   - LiveCamera
   - ZoomTarget
   - SkipTarget
+  - CalibrateButton
   layers:
   - Default
   - TransparentFX
